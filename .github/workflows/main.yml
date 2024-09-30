@@ -1,0 +1,33 @@
+name: Setup MacOS with RustDesk
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-rustdesk:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        shell: bash
+
+      - name: Install RustDesk
+        run: |
+          brew install --cask rustdesk
+        shell: bash
+
+      - name: Start RustDesk
+        run: |
+          open /Applications/RustDesk.app
+        shell: bash
+
+      - name: Display RustDesk ID
+        run: |
+          # This step would require scripting to extract the RustDesk ID
+          echo "RustDesk ID would be displayed here."
+        shell: bash

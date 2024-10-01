@@ -1,4 +1,4 @@
-name: macOS Workflow with NGROK
+name: Setup macOS with RDP Access via Ngrok
 
 on:
   push:
@@ -9,49 +9,45 @@ on:
       - main
 
 jobs:
-  build:
-    runs-on: [self-hosted, macos]
-
+  setup-macos:
+    name: Setup macOS with RDP
+    runs-on: macos-14
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Установка Homebrew (если не установлен)
+      - name: Install Homebrew
         run: |
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV
-          eval "$(/opt/homebrew/bin/brew shellenv)"
-
-      - name: Установка NGROK
-        run: brew install --cask ngrok
-
-      - name: Настройка NGROK
-        run: ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-
-      - name: Запуск локального сервиса
+      
+      - name: Install necessary packages (ngrok, RDP)
         run: |
-          # Пример: запуск простого HTTP-сервера на порту 8000
-          python3 -m http.server 8000 &
-          SERVER_PID=$!
+          brew install --cask ngrok
+          brew install xquartz
+          brew install --cask microsoft-remote-desktop
 
-          # Запуск NGROK для туннелирования порта 8000
-          ngrok http 8000 --log=stdout > ngrok.log &
-          NGROK_PID=$!
+      - name: Set up ngrok for RDP
+        run: |
+          # Установите свой токен от ngrok
+          ngrok authtoken <2XtaZMz7tK1jlXohnotOWy0MAAs_2ZFSnvf31hSEBRtz4ZQuG>
+          ngrok tcp 3389 &
 
-          # Ожидание установления туннеля
+      - name: Get ngrok public URL
+        run: |
           sleep 10
+          curl --silent http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
 
-          # Получение публичного URL
-          PUBLIC_URL=$(grep -o "https://[0-9a-z]*\.ngrok.io" ngrok.log | head -n1)
-          echo "Public URL: $PUBLIC_URL"
-
-          # Сохранение URL как артефакт или вывод для использования далее
-          echo "::set-output name=ngrok_url::$PUBLIC_URL"
-
-      # Дополнительные шаги по необходимости
-
-      - name: Завершение процессов
-        if: always()
+      - name: Install and configure RDP
         run: |
-          kill $SERVER_PID
-          kill $NGROK_PID
+          # Установка и настройка RDP
+          brew install xrdp
+          sudo xrdp --nodaemon
+          sudo /usr/sbin/xrdp -nodaemon
+
+      - name: Display login instructions
+        run: |
+          echo "RDP is set up. Use the ngrok URL with port 3389 to connect."
+
+      - name: Display ngrok status
+        run: |
+          ngrok status

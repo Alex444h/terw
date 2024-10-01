@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Установить Homebrew (если не установлен)
+      - name: Install Homebrew (if not installed)
         run: |
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           # Определяем архитектуру и устанавливаем соответствующие пути
@@ -26,9 +26,8 @@ jobs:
             echo "/opt/homebrew/sbin" >> $GITHUB_PATH
           fi
 
-      - name: Скачивание ngrok для macOS
+      - name: Download ngrok for macOS
         run: |
-          # Определяем архитектуру для правильной загрузки ngrok
           ARCH=$(uname -m)
           if [ "$ARCH" = "arm64" ]; then
             NGROK_URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-arm64.zip"
@@ -45,17 +44,15 @@ jobs:
             sudo mv ngrok /usr/local/bin/ngrok
           fi
 
-      - name: Аутентификация ngrok
+      - name: Authenticate ngrok
         run: ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Установка RustDesk
+      - name: Install RustDesk
         run: brew install --cask rustdesk
 
-      - name: Настройка RustDesk
+      - name: Configure RustDesk
         run: |
-          # Создаём конфигурационные файлы для RustDesk
           mkdir -p ~/rustdesk
-
           cat <<EOL > ~/rustdesk/hbbs.conf
           [hbbs]
           listen_addr = "0.0.0.0:21115"
@@ -67,44 +64,59 @@ jobs:
           listen_addr = "0.0.0.0:21116"
           EOL
 
-      - name: Запуск RustDesk сервера
+      - name: Start RustDesk Server
         run: |
           hbbs -c ~/rustdesk/hbbs.conf &
           hbbr -c ~/rustdesk/hbbr.conf &
           sleep 10  # Ждём немного больше для инициализации серверов
 
-      - name: Создание ngrok туннелей для RustDesk
+      - name: Create ngrok tunnels for RustDesk
         run: |
-          ngrok tcp 21115 --log=stdout > ngrok21115.log &
-          ngrok tcp 21116 --log=stdout > ngrok21116.log &
+          # Назначаем уникальные имена туннелям
+          ngrok tcp 21115 --log=stdout --name server_tunnel > ngrok21115.log &
+          ngrok tcp 21116 --log=stdout --name relay_tunnel > ngrok21116.log &
           sleep 20  # Ждём больше времени для установления туннелей
 
-      - name: Установка jq
+      - name: Install jq
         run: brew install jq
 
-      - name: Проверка доступности ngrok API
+      - name: Check ngrok API availability
         run: |
           for i in {1..10}; do
+            # Проверяем доступность API на портах 4040 и 4041
             if curl -s http://localhost:4040/api/tunnels > /dev/null; then
-              echo "ngrok API доступно."
-              exit 0
+              echo "ngrok API доступно на порту 4040."
+              export NGROK_API_PORT=4040
+              break
+            elif curl -s http://localhost:4041/api/tunnels > /dev/null; then
+              echo "ngrok API доступно на порту 4041."
+              export NGROK_API_PORT=4041
+              break
             fi
             echo "Ждём доступности ngrok API..."
             sleep 2
           done
-          echo "Ошибка: ngrok API недоступно."
-          exit 1
+          
+          # Проверяем, установлена ли переменная NGROK_API_PORT
+          if [[ -z "${NGROK_API_PORT}" ]]; then
+            echo "Ошибка: ngrok API недоступно на портах 4040 и 4041."
+            exit 1
+          fi
+          
+          # Экспортируем переменную для использования в следующих шагах
+          echo "NGROK_API_PORT=$NGROK_API_PORT" >> $GITHUB_ENV
 
-      - name: Получение публичных URL-адресов ngrok
+      - name: Get ngrok public URLs
         run: |
-          # Функция для получения публичного URL по порту
           get_public_url() {
-            PORT=$1
-            echo $(curl -s http://localhost:4040/api/tunnels | jq -r ".tunnels[] | select(.config.addr == \"localhost:$PORT\") | .public_url")
+            NAME=$1
+            PORT=$2
+            URL=$(curl -s http://localhost:$PORT/api/tunnels | jq -r ".tunnels[] | select(.name == \"$NAME\") | .public_url")
+            echo "$URL"
           }
 
-          PUBLIC_URL1=$(get_public_url 21115)
-          PUBLIC_URL2=$(get_public_url 21116)
+          PUBLIC_URL1=$(get_public_url "server_tunnel" ${{ env.NGROK_API_PORT }})
+          PUBLIC_URL2=$(get_public_url "relay_tunnel" ${{ env.NGROK_API_PORT }})
 
           # Отладочная информация
           echo "DEBUG: PUBLIC_URL1=$PUBLIC_URL1"
@@ -113,7 +125,7 @@ jobs:
           echo "RustDesk_Server_Address=$PUBLIC_URL1" >> $GITHUB_ENV
           echo "RustDesk_Relay_Address=$PUBLIC_URL2" >> $GITHUB_ENV
 
-      - name: Проверка ngrok туннелей
+      - name: Check ngrok tunnels
         run: |
           if [[ -z "${{ env.RustDesk_Server_Address }}" || -z "${{ env.RustDesk_Relay_Address }}" ]]; then
             echo "Ошибка: Не удалось получить публичные URL для туннелей ngrok."
@@ -121,12 +133,12 @@ jobs:
             cat ngrok21115.log
             echo "Лог туннеля 21116:"
             cat ngrok21116.log
-            echo "Текущий ответ ngrok API:"
-            curl -s http://localhost:4040/api/tunnels | jq .
+            echo "Текущий ответ ngrok API на порту ${{ env.NGROK_API_PORT }}:"
+            curl -s http://localhost:${{ env.NGROK_API_PORT }}/api/tunnels | jq .
             exit 1
           fi
 
-      - name: Сохранение логов ngrok как артефакты
+      - name: Save ngrok logs as artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ngrok-logs
@@ -134,12 +146,12 @@ jobs:
             ngrok21115.log
             ngrok21116.log
 
-      - name: Вывод информации для подключения
+      - name: Display connection information
         run: |
           echo "RustDesk Server Address: ${{ env.RustDesk_Server_Address }}"
           echo "RustDesk Relay Address: ${{ env.RustDesk_Relay_Address }}"
 
-      - name: Сохранение информации как артефакт
+      - name: Save connection info as artifact
         run: |
           echo "Server: ${{ env.RustDesk_Server_Address }}" > connection_info.txt
           echo "Relay: ${{ env.RustDesk_Relay_Address }}" >> connection_info.txt
@@ -149,5 +161,5 @@ jobs:
           name: connection-info
           path: connection_info.txt
 
-      - name: Ожидание для поддержания активности runner-а
+      - name: Wait to keep runner active
         run: sleep 21600  # 6 часов в секундах

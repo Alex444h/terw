@@ -12,15 +12,7 @@ jobs:
     - name: Проверить текущего пользователя
       run: whoami
 
-    - name: Включить совместное использование экрана
-      run: |
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate \
-          -configure -access -on \
-          -users "runner" \
-          -privs -all
-
-    - name: Установить пароль для VNC
+    - name: Включить совместное использование экрана с VNC Legacy Mode
       env:
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
       run: |
@@ -29,10 +21,18 @@ jobs:
           echo "Пароль VNC должен содержать максимум 8 символов."
           exit 1
         fi
+        # Конвертация пароля в шестнадцатеричный формат
         HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
-        sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCPassword "$HEX_PW"
-        sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
+        # Настройка VNC-сервера с использованием Legacy Mode
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate \
+          -configure \
+          -access -on \
+          -users "runner" \
+          -privs -all \
+          -clientopts -setvnclegacy yes \
+          -clientopts -setvncpw "$HEX_PW" \
+          -restart -agent -console
 
     - name: Установить ngrok
       run: |
@@ -53,10 +53,15 @@ jobs:
     - name: Запустить туннель ngrok для VNC
       id: ngrok
       run: |
-        ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log &
+        # Запуск ngrok в фоновом режиме
+        nohup ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log 2>&1 &
         sleep 15
-        # Извлечь публичный адрес
+        # Извлечение публичного адреса
         PUBLIC_URL=$(grep -o "tcp://[0-9\.]*\.tcp.ngrok.io:[0-9]*" ngrok.log | head -n1)
+        if [ -z "$PUBLIC_URL" ]; then
+          echo "Не удалось получить публичный адрес ngrok."
+          exit 1
+        fi
         HOST=$(echo $PUBLIC_URL | cut -d':' -f2 | tr -d '/')
         PORT=$(echo $PUBLIC_URL | cut -d':' -f3)
         echo "host=$HOST" >> $GITHUB_OUTPUT

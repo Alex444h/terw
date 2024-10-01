@@ -32,7 +32,7 @@ jobs:
 
       - name: Set VNC password
         run: |
-          echo "YourVNCPassword" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          echo "Gans1238911gg1" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw
 
       - name: Start ngrok on port 5900 for VNC

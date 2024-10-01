@@ -1,61 +1,58 @@
-name: Setup macOS VNC with ngrok
+name: Cl
 
-on:
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
-  setup-vnc:
+  build:
     runs-on: macos-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      # Шаг 1: Проверка кода (опционально, если нужно)
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    - name: Install Homebrew
-      run: |
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        # Добавляем Homebrew в PATH для последующих шагов
-        echo "/opt/homebrew/bin" >> $GITHUB_PATH
-        echo "/opt/homebrew/sbin" >> $GITHUB_PATH
+      # Шаг 2: Скачивание ngrok для macOS
+      - name: Download ngrok
+        run: |
+          curl -L https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-arm64.zip -o ngrok.zip
+          unzip ngrok.zip
+          chmod +x ngrok
+          sudo mv ngrok /usr/local/bin/ngrok
 
-    - name: Install VNC Server and jq
-      run: |
-        brew install tigervnc jq
+      # Шаг 3: Аутентификация ngrok с использованием токена
+      - name: Authenticate ngrok
+        run: ngrok config add-authtoken $NGROK_AUTH_TOKEN
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Set VNC password
-      env:
-        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
-      run: |
-        mkdir -p ~/.vnc
-        echo "$VNC_PASSWORD" | vncpasswd -f > ~/.vnc/passwd
-        chmod 600 ~/.vnc/passwd
+      # Шаг 4: Установка RustDesk через Homebrew
+      - name: Install RustDesk
+        run: |
+          brew install --cask rustdesk
 
-    - name: Start VNC Server
-      run: |
-        vncserver :1 -geometry 1280x800 -depth 24
-      env:
-        DISPLAY: ":1"
+      # Шаг 5: Запуск RustDesk (если требуется автоматизация)
+      - name: Start RustDesk
+        run: |
+          open /Applications/RustDesk.app
+          # Дополнительно: Настройка RustDesk, если необходима автоматическая конфигурация
 
-    - name: Install ngrok
-      run: |
-        brew install --cask ngrok
+      # Шаг 6: Создание туннеля ngrok для RustDesk
+      # Предполагается, что RustDesk использует определенные порты. Убедитесь, какие порты необходимо открывать.
+      - name: Create ngrok Tunnel for RustDesk
+        run: |
+          ngrok tcp 21115 &  # Замените 21115 на фактический порт RustDesk, если отличается
+          sleep 5  # Ждем немного, чтобы ngrok установил соединение
 
-    - name: Authenticate ngrok
-      run: |
-        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+      # Шаг 7: Получение и вывод публичного URL туннеля ngrok
+      - name: Get ngrok Public URL
+        run: |
+          curl --silent --show-error http://localhost:4040/api/tunnels | \
+          python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])" > ngrok_url.txt
+          cat ngrok_url.txt
 
-    - name: Start ngrok tunnel
-      id: ngrok
-      run: |
-        ngrok tcp 5901 &
-        sleep 10
-        TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-        echo "TUNNEL_URL=$TUNNEL_URL" >> $GITHUB_ENV
-
-    - name: Display Tunnel URL
-      run: |
-        echo "VNC Tunnel URL: ${{ env.TUNNEL_URL }}"
-
-    - name: Keep job running
-      run: |
-        sleep 3600
+      # (Опционально) Шаг 8: Сохранение URL как артефакта или переменной окружения для дальнейшего использования
+      - name: Save ngrok URL as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ngrok-url
+          path: ngrok_url.txt

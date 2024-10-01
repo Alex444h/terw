@@ -1,65 +1,30 @@
-name: Setup macOS with RustDesk
+name: macOS Self-Hosted Runner Workflow
 
-on: 
+on:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
 
 jobs:
-  macos-setup:
-    runs-on: macos-latest
-
+  build:
+    runs-on: self-hosted  # Указывает на использование самохостящегося раннера
     steps:
-    # Шаг 1: Проверка кода
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    # Шаг 2: Установка RustDesk
-    - name: Install RustDesk
-      run: |
-        brew install --cask rustdesk
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.17.0'
 
-    # Шаг 3: Запуск RustDesk в фоновом режиме
-    - name: Start RustDesk
-      run: |
-        nohup rustdesk > rustdesk.log 2>&1 &
+      - name: Install dependencies
+        run: npm install
 
-    # Шаг 4: Ожидание для завершения запуска RustDesk
-    - name: Wait for RustDesk to start
-      run: |
-        echo "Waiting for RustDesk to start..."
-        sleep 60
+      - name: Run build
+        run: npm run build
 
-    # Шаг 5: Поиск конфигурационного файла RustDesk
-    - name: Find RustDesk configuration file
-      run: |
-        echo "Searching for RustDesk config file..."
-        RUSTDESK_CONFIG=$(find ~ -name 'com.rustdesk.RustDesk.plist' 2>/dev/null)
-        if [ -z "$RUSTDESK_CONFIG" ]; then
-          echo "Error: Config file not found!"
-          exit 1
-        else
-          echo "Config file found: $RUSTDESK_CONFIG"
-        fi
-
-    # Шаг 6: Извлечение ID и пароля для подключения через RustDesk
-    - name: Fetch RustDesk connection details
-      shell: bash
-      run: |
-        echo "Fetching RustDesk connection details..."
-        RUSTDESK_ID=$(defaults read com.rustdesk.RustDesk UniqueID 2>/dev/null)
-        RUSTDESK_PASS=$(defaults read com.rustdesk.RustDesk Password 2>/dev/null)
-        if [ -z "$RUSTDESK_ID" ] || [ -z "$RUSTDESK_PASS" ]; then
-          echo "Error: Could not retrieve RustDesk ID or Password."
-          exit 1
-        fi
-        echo "RustDesk ID: $RUSTDESK_ID"
-        echo "RustDesk Password: $RUSTDESK_PASS"
-
-    # Шаг 7: Вывод данных для подключения
-    - name: Output connection info
-      run: |
-        echo "=============================="
-        echo "RustDesk ID: $RUSTDESK_ID"
-        echo "RustDesk Password: $RUSTDESK_PASS"
-        echo "=============================="
+      - name: Run tests
+        run: npm test

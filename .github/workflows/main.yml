@@ -11,14 +11,16 @@ on:
 jobs:
   setup-macos:
     name: Setup macOS with VNC
-    runs-on: macos-14
+    runs-on: macos-12
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Homebrew
         run: |
-          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo | /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+          eval "$(/opt/homebrew/bin/brew shellenv)"
 
       - name: Install Ngrok
         run: |
@@ -32,7 +34,6 @@ jobs:
 
       - name: Set VNC password
         run: |
-          # Здесь задается пароль VNC. Замените "YourVNCPassword" на ваш желаемый пароль.
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "Assan777"
 
@@ -43,7 +44,7 @@ jobs:
 
       - name: Wait for ngrok to start
         run: |
-          sleep 10
+          sleep 20
 
       - name: Get ngrok public URL
         run: |

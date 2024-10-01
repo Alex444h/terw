@@ -1,58 +1,85 @@
-name: Cl
+name: Remote MacOS Runner
 
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build:
+  remote-access:
     runs-on: macos-latest
+    timeout-minutes: 360  # Максимальное время выполнения: 6 часов
 
     steps:
-      # Шаг 1: Проверка кода (опционально, если нужно)
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Шаг 2: Скачивание ngrok для macOS
-      - name: Download ngrok
+      - name: Установить Homebrew (если не установлен)
         run: |
-          curl -L https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-arm64.zip -o ngrok.zip
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV
+          eval "$(/opt/homebrew/bin/brew shellenv)"
+
+      - name: Скачивание ngrok для macOS
+        run: |
+          curl -L https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
           unzip ngrok.zip
           chmod +x ngrok
           sudo mv ngrok /usr/local/bin/ngrok
 
-      # Шаг 3: Аутентификация ngrok с использованием токена
-      - name: Authenticate ngrok
-        run: ngrok config add-authtoken $NGROK_AUTH_TOKEN
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      - name: Аутентификация ngrok
+        run: ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      # Шаг 4: Установка RustDesk через Homebrew
-      - name: Install RustDesk
+      - name: Установка RustDesk
+        run: brew install --cask rustdesk
+
+      - name: Настройка RustDesk
         run: |
-          brew install --cask rustdesk
+          # Создаем конфигурационный файл для RustDesk
+          mkdir -p ~/rustdesk
+          echo "[hbbs]" > ~/rustdesk/hbbs.conf
+          echo "listen_addr = \"0.0.0.0:21115\"" >> ~/rustdesk/hbbs.conf
+          echo "relay_addr = \"0.0.0.0:21116\"" >> ~/rustdesk/hbbs.conf
+          echo "[hbbr]" > ~/rustdesk/hbbr.conf
+          echo "listen_addr = \"0.0.0.0:21116\"" >> ~/rustdesk/hbbr.conf
 
-      # Шаг 5: Запуск RustDesk (если требуется автоматизация)
-      - name: Start RustDesk
+      - name: Запуск RustDesk сервера
         run: |
-          open /Applications/RustDesk.app
-          # Дополнительно: Настройка RustDesk, если необходима автоматическая конфигурация
+          hbbs -c ~/rustdesk/hbbs.conf &
+          hbbr -c ~/rustdesk/hbbr.conf &
+          sleep 5  # Ждем немного, чтобы серверы запустились
 
-      # Шаг 6: Создание туннеля ngrok для RustDesk
-      # Предполагается, что RustDesk использует определенные порты. Убедитесь, какие порты необходимо открывать.
-      - name: Create ngrok Tunnel for RustDesk
+      - name: Создание ngrok туннелей для RustDesk
         run: |
-          ngrok tcp 21115 &  # Замените 21115 на фактический порт RustDesk, если отличается
-          sleep 5  # Ждем немного, чтобы ngrok установил соединение
+          ngrok tcp 21115 --log=stdout > ngrok21115.log &
+          ngrok tcp 21116 --log=stdout > ngrok21116.log &
+          sleep 10  # Ждем установления туннелей
 
-      # Шаг 7: Получение и вывод публичного URL туннеля ngrok
-      - name: Get ngrok Public URL
+      - name: Получение публичных URL-адресов ngrok
         run: |
-          curl --silent --show-error http://localhost:4040/api/tunnels | \
-          python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])" > ngrok_url.txt
-          cat ngrok_url.txt
+          PUBLIC_URL1=$(curl -s http://localhost:4040/api/tunnels | \
+            python3 -c "import sys, json; data=json.load(sys.stdin); print([tunnel['public_url'] for tunnel in data['tunnels'] if tunnel['config']['addr'] == '21115'][0])")
+          PUBLIC_URL2=$(curl -s http://localhost:4040/api/tunnels | \
+            python3 -c "import sys, json; data=json.load(sys.stdin); print([tunnel['public_url'] for tunnel in data['tunnels'] if tunnel['config']['addr'] == '21116'][0])")
+          echo "RustDesk Server Address: $PUBLIC_URL1"
+          echo "RustDesk Relay Address: $PUBLIC_URL2"
+          echo "RustDesk_Server_Address=$PUBLIC_URL1" >> $GITHUB_ENV
+          echo "RustDesk_Relay_Address=$PUBLIC_URL2" >> $GITHUB_ENV
 
-      # (Опционально) Шаг 8: Сохранение URL как артефакта или переменной окружения для дальнейшего использования
-      - name: Save ngrok URL as Artifact
-        uses: actions/upload-artifact@v3
+      - name: Вывод информации для подключения
+        run: |
+          echo "RustDesk Server Address: ${{ env.RustDesk_Server_Address }}"
+          echo "RustDesk Relay Address: ${{ env.RustDesk_Relay_Address }}"
+
+      - name: Сохранение информации как артефакт
+        run: |
+          echo "Server: ${{ env.RustDesk_Server_Address }}" > connection_info.txt
+          echo "Relay: ${{ env.RustDesk_Relay_Address }}" >> connection_info.txt
+
+      - uses: actions/upload-artifact@v3
         with:
-          name: ngrok-url
-          path: ngrok_url.txt
+          name: connection-info
+          path: connection_info.txt
+
+      - name: Ожидание для поддержания активности runner-а
+        run: sleep 6h

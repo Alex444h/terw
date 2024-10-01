@@ -47,35 +47,22 @@ jobs:
       - name: Authenticate ngrok
         run: ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Install RustDesk
-        run: brew install --cask rustdesk
-
-      - name: Configure RustDesk
+      - name: Create ngrok config file
         run: |
-          mkdir -p ~/rustdesk
-          cat <<EOL > ~/rustdesk/hbbs.conf
-          [hbbs]
-          listen_addr = "0.0.0.0:21115"
-          relay_addr = "0.0.0.0:21116"
+          cat <<EOL > ngrok.yml
+          tunnels:
+            server_tunnel:
+              proto: tcp
+              addr: 21115
+            relay_tunnel:
+              proto: tcp
+              addr: 21116
           EOL
 
-          cat <<EOL > ~/rustdesk/hbbr.conf
-          [hbbr]
-          listen_addr = "0.0.0.0:21116"
-          EOL
-
-      - name: Start RustDesk Server
+      - name: Start ngrok with config
         run: |
-          hbbs -c ~/rustdesk/hbbs.conf &
-          hbbr -c ~/rustdesk/hbbr.conf &
-          sleep 10  # Ждём немного больше для инициализации серверов
-
-      - name: Create ngrok tunnels for RustDesk
-        run: |
-          # Назначаем уникальные имена туннелям
-          ngrok tcp 21115 --log=stdout --name server_tunnel > ngrok21115.log &
-          ngrok tcp 21116 --log=stdout --name relay_tunnel > ngrok21116.log &
-          sleep 20  # Ждём больше времени для установления туннелей
+          ngrok start --all --config=ngrok.yml > ngrok.log &
+          sleep 20  # Ждём, чтобы ngrok успел запуститься
 
       - name: Install jq
         run: brew install jq
@@ -83,7 +70,7 @@ jobs:
       - name: Check ngrok API availability
         run: |
           for i in {1..10}; do
-            # Проверяем доступность API на портах 4040 и 4041
+            # Проверяем доступность API на порту 4040 и 4041
             if curl -s http://localhost:4040/api/tunnels > /dev/null; then
               echo "ngrok API доступно на порту 4040."
               export NGROK_API_PORT=4040
@@ -96,14 +83,10 @@ jobs:
             echo "Ждём доступности ngrok API..."
             sleep 2
           done
-          
-          # Проверяем, установлена ли переменная NGROK_API_PORT
           if [[ -z "${NGROK_API_PORT}" ]]; then
             echo "Ошибка: ngrok API недоступно на портах 4040 и 4041."
             exit 1
           fi
-          
-          # Экспортируем переменную для использования в следующих шагах
           echo "NGROK_API_PORT=$NGROK_API_PORT" >> $GITHUB_ENV
 
       - name: Get ngrok public URLs
@@ -111,14 +94,12 @@ jobs:
           get_public_url() {
             NAME=$1
             PORT=$2
-            URL=$(curl -s http://localhost:$PORT/api/tunnels | jq -r ".tunnels[] | select(.name == \"$NAME\") | .public_url")
-            echo "$URL"
+            echo $(curl -s http://localhost:$PORT/api/tunnels | jq -r ".tunnels[] | select(.name == \"$NAME\") | .public_url")
           }
 
           PUBLIC_URL1=$(get_public_url "server_tunnel" ${{ env.NGROK_API_PORT }})
           PUBLIC_URL2=$(get_public_url "relay_tunnel" ${{ env.NGROK_API_PORT }})
 
-          # Отладочная информация
           echo "DEBUG: PUBLIC_URL1=$PUBLIC_URL1"
           echo "DEBUG: PUBLIC_URL2=$PUBLIC_URL2"
 
@@ -129,10 +110,8 @@ jobs:
         run: |
           if [[ -z "${{ env.RustDesk_Server_Address }}" || -z "${{ env.RustDesk_Relay_Address }}" ]]; then
             echo "Ошибка: Не удалось получить публичные URL для туннелей ngrok."
-            echo "Лог туннеля 21115:"
-            cat ngrok21115.log
-            echo "Лог туннеля 21116:"
-            cat ngrok21116.log
+            echo "Лог туннеля:"
+            cat ngrok.log
             echo "Текущий ответ ngrok API на порту ${{ env.NGROK_API_PORT }}:"
             curl -s http://localhost:${{ env.NGROK_API_PORT }}/api/tunnels | jq .
             exit 1
@@ -143,8 +122,7 @@ jobs:
         with:
           name: ngrok-logs
           path: |
-            ngrok21115.log
-            ngrok21116.log
+            ngrok.log
 
       - name: Display connection information
         run: |

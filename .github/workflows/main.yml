@@ -28,13 +28,18 @@ jobs:
     - name: Wait for RustDesk to start
       run: |
         echo "Waiting for RustDesk to start..."
-        sleep 20 # Увеличьте время, если необходимо
+        sleep 60 # Увеличено время ожидания на 60 секунд для полной загрузки
 
-    # Шаг 5: Проверка наличия конфигурационного файла
+    # Шаг 5: Проверка конфигурационного файла
     - name: Check RustDesk configuration
       run: |
         echo "Checking for RustDesk config file..."
-        ls ~/Library/Preferences/com.rustdesk.RustDesk.plist || echo "Config file not found!"
+        if [ -f ~/Library/Preferences/com.rustdesk.RustDesk.plist ]; then
+          echo "Config file found!"
+        else
+          echo "Error: Config file not found!"
+          exit 1
+        fi
 
     # Шаг 6: Извлечение ID и пароля для подключения через RustDesk
     - name: Fetch RustDesk connection details

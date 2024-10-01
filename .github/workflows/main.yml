@@ -16,16 +16,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Homebrew
+      - name: Install Homebrew and Ngrok
         run: |
           echo | /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
           eval "$(/opt/homebrew/bin/brew shellenv)"
-
-      - name: Install Ngrok and Utilities
-        run: |
           brew install ngrok
-          brew install screenresolution
 
       - name: Create new user for VNC (optional)
         run: |
@@ -42,10 +38,6 @@ jobs:
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "YourStrongPassword"
-
-      - name: Set screen resolution to avoid black screen
-        run: |
-          sudo screenresolution set 1280x1024x32
 
       - name: Ensure graphical session is active
         run: |

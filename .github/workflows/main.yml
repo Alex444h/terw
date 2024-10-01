@@ -41,6 +41,11 @@ jobs:
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -status
         shell: bash
 
+      - name: Проверить, что порт 5900 открыт
+        run: |
+          lsof -i :5900
+        shell: bash
+
       - name: Установить ngrok
         run: |
           brew install --cask ngrok
@@ -67,7 +72,7 @@ jobs:
         run: |
           # Запуск ngrok в фоновом режиме
           nohup ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log 2>&1 &
-          sleep 30  # Увеличенное время ожидания для установления туннеля
+          sleep 60  # Увеличенное время ожидания для установления туннеля
 
           # Проверка, запущен ли ngrok
           if pgrep ngrok > /dev/null; then
@@ -78,8 +83,12 @@ jobs:
             exit 1
           fi
 
-          # Извлечение публичного адреса с использованием ngrok API
-          PUBLIC_URL=$(curl --silent http://localhost:4040/api/tunnels | grep -o '"public_url":"tcp://[^"]*' | grep -o 'tcp://[^"]*')
+          # Проверка содержимого ngrok.log
+          echo "Содержимое ngrok.log:"
+          cat ngrok.log
+
+          # Извлечение публичного адреса с использованием grep
+          PUBLIC_URL=$(grep -o "tcp://[^ ]*" ngrok.log | head -n1)
 
           if [ -z "$PUBLIC_URL" ]; then
             echo "Не удалось получить публичный адрес ngrok."
@@ -87,6 +96,7 @@ jobs:
             exit 1
           fi
 
+          # Разделение URL на host и port
           HOST=$(echo $PUBLIC_URL | cut -d':' -f2 | tr -d '/')
           PORT=$(echo $PUBLIC_URL | cut -d':' -f3)
           echo "host=$HOST" >> $GITHUB_OUTPUT
@@ -97,6 +107,11 @@ jobs:
           echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
           echo "Логин: runner"
           echo "Пароль: Passwrd1"
+
+      - name: Проверить ngrok статус (опционально)
+        run: |
+          curl --silent http://localhost:4040/api/tunnels/vnc || echo "Cannot access ngrok API."
+        shell: bash
 
       - name: Поддерживать работу Runner до 6 часов
         run: |

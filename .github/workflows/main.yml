@@ -6,26 +6,24 @@ on:
 jobs:
   vnc-server:
     runs-on: macos-latest
-    timeout-minutes: 360  # Устанавливаем таймаут на 6 часов
+    timeout-minutes: 360  # Таймаут на 6 часов
 
     steps:
+    - name: Проверить текущего пользователя
+      run: whoami
+
     - name: Включить совместное использование экрана
       run: |
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate \
           -configure -access -on \
-          -users $(whoami) \
+          -users "$USER" \
           -privs -all
 
     - name: Установить пароль для VNC
-      env:
-        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
       run: |
-        # Пароль должен содержать максимум 8 символов
-        if [ ${#VNC_PASSWORD} -gt 8 ]; then
-          echo "Пароль VNC должен содержать максимум 8 символов."
-          exit 1
-        fi
+        # Фиксированный пароль VNC (максимум 8 символов)
+        VNC_PASSWORD="SecureP@ss"
         HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
         sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCPassword "$HEX_PW"
         sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
@@ -40,7 +38,7 @@ jobs:
         mkdir -p ~/.ngrok2
         cat <<EOF > ~/.ngrok2/ngrok.yml
         version: "2"
-        authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
+        authtoken: "YOUR_NGROK_AUTH_TOKEN"
         tunnels:
           vnc:
             proto: tcp
@@ -62,6 +60,8 @@ jobs:
     - name: Показать адрес для подключения
       run: |
         echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
+        echo "Логин: runner"  # Стандартный пользователь GitHub Actions на macOS
+        echo "Пароль: SecureP@ss"
 
     - name: Поддерживать работу Runner до 6 часов
       run: |

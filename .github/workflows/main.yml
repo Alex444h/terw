@@ -22,16 +22,17 @@ jobs:
           echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
           eval "$(/opt/homebrew/bin/brew shellenv)"
 
-      - name: Install Ngrok
+      - name: Install Ngrok and Utilities
         run: |
           brew install ngrok
+          brew install screenresolution
 
       - name: Create new user for VNC (optional)
         run: |
           sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "YourStrongPassword"
           sudo dscl . -append /Groups/admin GroupMembership vncuser
 
-      - name: Enable Remote Management (VNC)
+      - name: Enable Remote Management (VNC) and configure access
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on -users vncuser -privs -all \
@@ -41,6 +42,10 @@ jobs:
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "YourStrongPassword"
+
+      - name: Set screen resolution to avoid black screen
+        run: |
+          sudo screenresolution set 1280x1024x32
 
       - name: Ensure graphical session is active
         run: |

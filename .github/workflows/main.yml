@@ -17,13 +17,18 @@ jobs:
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate \
           -configure -access -on \
-          -users "$USER" \
+          -users "runner" \
           -privs -all
 
     - name: Установить пароль для VNC
+      env:
+        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
       run: |
-        # Фиксированный пароль VNC (максимум 8 символов)
-        VNC_PASSWORD="SecureP@ss"
+        # Пароль должен содержать максимум 8 символов
+        if [ ${#VNC_PASSWORD} -gt 8 ]; then
+          echo "Пароль VNC должен содержать максимум 8 символов."
+          exit 1
+        fi
         HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
         sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCPassword "$HEX_PW"
         sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
@@ -38,7 +43,7 @@ jobs:
         mkdir -p ~/.ngrok2
         cat <<EOF > ~/.ngrok2/ngrok.yml
         version: "2"
-        authtoken: "2XtaZMz7tK1jlXohnotOWy0MAAs_2ZFSnvf31hSEBRtz4ZQuG"
+        authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
         tunnels:
           vnc:
             proto: tcp
@@ -60,8 +65,8 @@ jobs:
     - name: Показать адрес для подключения
       run: |
         echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
-        echo "Логин: runner"  # Стандартный пользователь GitHub Actions на macOS
-        echo "Пароль: SecureP@ss"
+        echo "Логин: runner"
+        echo "Пароль: ${{ secrets.VNC_PASSWORD }}"
 
     - name: Поддерживать работу Runner до 6 часов
       run: |

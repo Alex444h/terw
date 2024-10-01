@@ -28,9 +28,9 @@ jobs:
 
       - name: Set up ngrok for RDP
         run: |
-          # Установите свой токен от ngrok
-          ngrok authtoken <2XtaZMz7tK1jlXohnotOWy0MAAs_2ZFSnvf31hSEBRtz4ZQuG>
-          ngrok tcp 3389 &
+          # Replace with your ngrok authtoken
+          ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          nohup ngrok tcp 3389 &
 
       - name: Get ngrok public URL
         run: |
@@ -39,15 +39,12 @@ jobs:
 
       - name: Install and configure RDP
         run: |
-          # Установка и настройка RDP
+          # Install and configure RDP
           brew install xrdp
-          sudo xrdp --nodaemon
-          sudo /usr/sbin/xrdp -nodaemon
-
-      - name: Display login instructions
-        run: |
-          echo "RDP is set up. Use the ngrok URL with port 3389 to connect."
+          sudo brew services start xrdp
+          sudo xrdp --nodaemon &
 
       - name: Display ngrok status
         run: |
-          ngrok status
+          sleep 10
+          curl --silent http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'

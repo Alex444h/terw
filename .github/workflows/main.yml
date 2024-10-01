@@ -1,4 +1,4 @@
-name: Setup macOS VNC Server
+name: Setup macOS VNC Server with ngrok
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
 jobs:
   vnc-server:
     runs-on: macos-latest
+    timeout-minutes: 360  # Устанавливаем таймаут на 6 часов
 
     steps:
     - name: Включить совместное использование экрана
@@ -17,32 +18,44 @@ jobs:
           -privs -all
 
     - name: Установить пароль для VNC
+      env:
+        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
       run: |
-        # Убедитесь, что пароль содержит максимум 8 символов
-        PASSWORD="${{ secrets.VNC_PASSWORD }}" 
-        HEX_PW=$(echo -n "$PASSWORD" | xxd -p | tr -d '\n')
+        # Пароль должен содержать максимум 8 символов
+        if [ ${#VNC_PASSWORD} -gt 8 ]; then
+          echo "Пароль VNC должен содержать максимум 8 символов."
+          exit 1
+        fi
+        HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
         sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCPassword "$HEX_PW"
         sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
 
     - name: Установить ngrok
       run: |
-        brew install ngrok
+        brew install --cask ngrok
 
     - name: Настроить ngrok
       run: |
         mkdir -p ~/.ngrok2
-        echo "authtoken: ${{ secrets.NGROK_AUTH_TOKEN }}" > ~/.ngrok2/ngrok.yml
+        cat <<EOF > ~/.ngrok2/ngrok.yml
+        version: "2"
+        authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
+        tunnels:
+          vnc:
+            proto: tcp
+            addr: 5900
+        EOF
 
     - name: Запустить туннель ngrok для VNC
       id: ngrok
       run: |
-        ngrok tcp 5900 --config ~/.ngrok2/ngrok.yml > ngrok.log &
+        ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log &
         sleep 15
         # Извлечь публичный адрес
-        NGROK_TCP=$(grep -o "0\.tcp\.ngrok\.io:[0-9]*" ngrok.log | head -n1)
-        HOST=$(echo $NGROK_TCP | cut -d':' -f1)
-        PORT=$(echo $NGROK_TCP | cut -d':' -f2)
+        PUBLIC_URL=$(grep -o "tcp://[0-9\.]*\.tcp.ngrok.io:[0-9]*" ngrok.log | head -n1)
+        HOST=$(echo $PUBLIC_URL | cut -d':' -f2 | tr -d '/')
+        PORT=$(echo $PUBLIC_URL | cut -d':' -f3)
         echo "host=$HOST" >> $GITHUB_OUTPUT
         echo "port=$PORT" >> $GITHUB_OUTPUT
 
@@ -50,6 +63,7 @@ jobs:
       run: |
         echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
 
-    - name: Поддерживать работу Runner
+    - name: Поддерживать работу Runner до 6 часов
       run: |
-        while true; do sleep 60; done
+        echo "Сеанс VNC активен. Он будет закрыт через 6 часов."
+        sleep 21600  # 6 часов в секундах

@@ -6,7 +6,7 @@ on:
 jobs:
   vnc-server:
     runs-on: macos-latest
-    timeout-minutes: 360  # Таймаут на 6 часов
+    timeout-minutes: 360  # Максимальное время выполнения: 6 часов
 
     steps:
     - name: Проверить текущего пользователя
@@ -21,9 +21,11 @@ jobs:
           echo "Пароль VNC должен содержать максимум 8 символов."
           exit 1
         fi
+
         # Конвертация пароля в шестнадцатеричный формат
         HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
-        # Настройка VNC-сервера с использованием Legacy Mode
+
+        # Настройка VNC-сервера в Legacy Mode
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate \
           -configure \
@@ -33,6 +35,11 @@ jobs:
           -clientopts -setvnclegacy yes \
           -clientopts -setvncpw "$HEX_PW" \
           -restart -agent -console
+
+    - name: Проверить статус VNC-сервера
+      run: |
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -status
+      shell: /bin/bash -e
 
     - name: Установить ngrok
       run: |
@@ -50,18 +57,35 @@ jobs:
             addr: 5900
         EOF
 
+    - name: Проверить конфигурационный файл ngrok
+      run: |
+        cat ~/.ngrok2/ngrok.yml
+      shell: /bin/bash -e
+
     - name: Запустить туннель ngrok для VNC
       id: ngrok
       run: |
         # Запуск ngrok в фоновом режиме
         nohup ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log 2>&1 &
         sleep 15
+
+        # Проверка, запущен ли ngrok
+        if pgrep ngrok > /dev/null; then
+          echo "ngrok успешно запущен"
+        else
+          echo "ngrok не запущен. Проверка логов..."
+          cat ngrok.log
+          exit 1
+        fi
+
         # Извлечение публичного адреса
         PUBLIC_URL=$(grep -o "tcp://[0-9\.]*\.tcp.ngrok.io:[0-9]*" ngrok.log | head -n1)
         if [ -z "$PUBLIC_URL" ]; then
           echo "Не удалось получить публичный адрес ngrok."
+          cat ngrok.log  # Вывод логов для диагностики
           exit 1
         fi
+
         HOST=$(echo $PUBLIC_URL | cut -d':' -f2 | tr -d '/')
         PORT=$(echo $PUBLIC_URL | cut -d':' -f3)
         echo "host=$HOST" >> $GITHUB_OUTPUT
@@ -71,7 +95,7 @@ jobs:
       run: |
         echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
         echo "Логин: runner"
-        echo "Пароль: ${{ secrets.VNC_PASSWORD }}"
+        echo "Пароль: Passwrd1"
 
     - name: Поддерживать работу Runner до 6 часов
       run: |

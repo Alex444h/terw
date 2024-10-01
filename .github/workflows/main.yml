@@ -28,10 +28,22 @@ jobs:
 
       - name: Скачивание ngrok для macOS
         run: |
-          curl -L https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
+          # Определяем архитектуру для правильной загрузки ngrok
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then
+            NGROK_URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-arm64.zip"
+          else
+            NGROK_URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip"
+          fi
+          curl -L $NGROK_URL -o ngrok.zip
           unzip ngrok.zip
           chmod +x ngrok
-          sudo mv ngrok /usr/local/bin/ngrok || sudo mv ngrok /opt/homebrew/bin/ngrok
+          # Перемещаем ngrok в соответствующий каталог
+          if [ "$ARCH" = "arm64" ]; then
+            sudo mv ngrok /opt/homebrew/bin/ngrok
+          else
+            sudo mv ngrok /usr/local/bin/ngrok
+          fi
 
       - name: Аутентификация ngrok
         run: ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
@@ -61,10 +73,20 @@ jobs:
           ngrok tcp 21116 --log=stdout > ngrok21116.log &
           sleep 10  # Ждем установления туннелей
 
+      - name: Установка jq
+        run: brew install jq
+
       - name: Получение публичных URL-адресов ngrok
         run: |
-          PUBLIC_URL1=$(jq -r '.tunnels[] | select(.config.addr == "21115") | .public_url' < http://localhost:4040/api/tunnels)
-          PUBLIC_URL2=$(jq -r '.tunnels[] | select(.config.addr == "21116") | .public_url' < http://localhost:4040/api/tunnels)
+          # Функция для получения публичного URL по порту
+          get_public_url() {
+            PORT=$1
+            echo $(curl -s http://localhost:4040/api/tunnels | jq -r ".tunnels[] | select(.config.addr | contains(\":$PORT\")) | .public_url")
+          }
+
+          PUBLIC_URL1=$(get_public_url 21115)
+          PUBLIC_URL2=$(get_public_url 21116)
+
           echo "RustDesk Server Address: $PUBLIC_URL1"
           echo "RustDesk Relay Address: $PUBLIC_URL2"
           echo "RustDesk_Server_Address=$PUBLIC_URL1" >> $GITHUB_ENV

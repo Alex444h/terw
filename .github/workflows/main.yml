@@ -1,33 +1,43 @@
-name: Setup MacOS with RustDesk
+name: Setup macOS with RustDesk
 
-on:
-  workflow_dispatch:
+on: 
+  push:
+    branches:
+      - main
 
 jobs:
-  setup-rustdesk:
-    runs-on: macos-13
+  macos-setup:
+    runs-on: macos-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+    # Шаг 1: Проверка кода
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Install Homebrew
-        run: |
-          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        shell: bash
+    # Шаг 2: Установка RustDesk
+    - name: Install RustDesk
+      run: |
+        brew install --cask rustdesk
 
-      - name: Install RustDesk
-        run: |
-          brew install --cask rustdesk
-        shell: bash
+    # Шаг 3: Запуск RustDesk
+    - name: Start RustDesk
+      run: |
+        rustdesk &
 
-      - name: Start RustDesk
-        run: |
-          open /Applications/RustDesk.app
-        shell: bash
+    # Шаг 4: Получение информации для подключения
+    - name: Fetch RustDesk connection details
+      run: |
+        echo "RustDesk is running. Fetching connection details..."
+        sleep 5 # Подождем, пока RustDesk запустится
+        RUSTDESK_ID=$(cat ~/Library/Preferences/com.rustdesk.RustDesk.plist | grep -A 1 UniqueID | tail -n 1 | cut -d'<' -f3 | cut -d'>' -f2)
+        RUSTDESK_PASS=$(cat ~/Library/Preferences/com.rustdesk.RustDesk.plist | grep -A 1 Password | tail -n 1 | cut -d'<' -f3 | cut -d'>' -f2)
+        echo "RustDesk ID: $RUSTDESK_ID"
+        echo "RustDesk Password: $RUSTDESK_PASS"
 
-      - name: Display RustDesk ID
-        run: |
-          # This step would require scripting to extract the RustDesk ID
-          echo "RustDesk ID would be displayed here."
-        shell: bash
+    # Шаг 5: Вывод данных для подключения
+    - name: Output connection info
+      run: |
+        echo "=============================="
+        echo "RustDesk ID: $RUSTDESK_ID"
+        echo "RustDesk Password: $RUSTDESK_PASS"
+        echo "=============================="

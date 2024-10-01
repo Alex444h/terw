@@ -39,7 +39,7 @@ jobs:
       - name: Проверить статус VNC-сервера
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -status
-        shell: /bin/bash
+        shell: bash
 
       - name: Установить ngrok
         run: |
@@ -60,7 +60,7 @@ jobs:
       - name: Проверить конфигурационный файл ngrok
         run: |
           cat ~/.ngrok2/ngrok.yml
-        shell: /bin/bash
+        shell: bash
 
       - name: Запустить туннель ngrok для VNC
         id: ngrok

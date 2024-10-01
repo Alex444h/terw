@@ -53,8 +53,9 @@ jobs:
 
       - name: Настройка RustDesk
         run: |
-          # Создаем конфигурационный файл для RustDesk
+          # Создаём конфигурационные файлы для RustDesk
           mkdir -p ~/rustdesk
+
           cat <<EOL > ~/rustdesk/hbbs.conf
           [hbbs]
           listen_addr = "0.0.0.0:21115"
@@ -88,7 +89,7 @@ jobs:
               echo "ngrok API доступно."
               exit 0
             fi
-            echo "Ждем доступности ngrok API..."
+            echo "Ждём доступности ngrok API..."
             sleep 2
           done
           echo "Ошибка: ngrok API недоступно."
@@ -99,7 +100,7 @@ jobs:
           # Функция для получения публичного URL по порту
           get_public_url() {
             PORT=$1
-            echo $(curl -s http://localhost:4040/api/tunnels | jq -r ".tunnels[] | select(.config.addr | contains(\":$PORT\")) | .public_url")
+            echo $(curl -s http://localhost:4040/api/tunnels | jq -r ".tunnels[] | select(.config.addr == \"localhost:$PORT\") | .public_url")
           }
 
           PUBLIC_URL1=$(get_public_url 21115)
@@ -120,6 +121,8 @@ jobs:
             cat ngrok21115.log
             echo "Лог туннеля 21116:"
             cat ngrok21116.log
+            echo "Текущий ответ ngrok API:"
+            curl -s http://localhost:4040/api/tunnels | jq .
             exit 1
           fi
 

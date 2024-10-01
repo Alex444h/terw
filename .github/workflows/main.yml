@@ -1,6 +1,6 @@
 name: Setup macOS with RustDesk
 
-on:
+on: 
   push:
     branches:
       - main
@@ -10,35 +10,47 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    # Шаг 1: Клонирование репозитория
+    # Шаг 1: Проверка кода
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # Шаг 2: Установка необходимых инструментов (например, brew)
-    - name: Install Homebrew and dependencies
+    # Шаг 2: Установка RustDesk
+    - name: Install RustDesk
       run: |
-        yes "" | /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
         brew install --cask rustdesk
 
-    # Шаг 3: Запуск RustDesk и сохранение ID и пароля
-    - name: Launch RustDesk and generate connection info
+    # Шаг 3: Запуск RustDesk в фоновом режиме
+    - name: Start RustDesk
       run: |
-        echo "Запуск RustDesk..."
-        open -a RustDesk
-        sleep 10  # Ждем 10 секунд для инициализации RustDesk
+        nohup rustdesk > rustdesk.log 2>&1 &
 
-        # Пытаемся получить ID и пароль через plist-файл
-        RUSTDESK_PLIST="$HOME/Library/Preferences/com.rustdesk.RustDesk.plist"
-        if [ -f "$RUSTDESK_PLIST" ]; then
-          RUSTDESK_ID=$(defaults read com.rustdesk.RustDesk UniqueID)
-          RUSTDESK_PASS=$(defaults read com.rustdesk.RustDesk Password)
-          echo "RustDesk ID: $RUSTDESK_ID"
-          echo "RustDesk Password: $RUSTDESK_PASS"
-        else
-          echo "Не удалось найти plist-файл RustDesk. Возможно, приложение не инициализировалось."
+    # Шаг 4: Ожидание для завершения запуска RustDesk
+    - name: Wait for RustDesk to start
+      run: |
+        echo "Waiting for RustDesk to start..."
+        sleep 20 # Увеличьте время, если необходимо
+
+    # Шаг 5: Проверка наличия конфигурационного файла
+    - name: Check RustDesk configuration
+      run: |
+        echo "Checking for RustDesk config file..."
+        ls ~/Library/Preferences/com.rustdesk.RustDesk.plist || echo "Config file not found!"
+
+    # Шаг 6: Извлечение ID и пароля для подключения через RustDesk
+    - name: Fetch RustDesk connection details
+      shell: bash
+      run: |
+        echo "Fetching RustDesk connection details..."
+        RUSTDESK_ID=$(defaults read com.rustdesk.RustDesk UniqueID 2>/dev/null)
+        RUSTDESK_PASS=$(defaults read com.rustdesk.RustDesk Password 2>/dev/null)
+        if [ -z "$RUSTDESK_ID" ] || [ -z "$RUSTDESK_PASS" ]; then
+          echo "Error: Could not retrieve RustDesk ID or Password."
+          exit 1
         fi
+        echo "RustDesk ID: $RUSTDESK_ID"
+        echo "RustDesk Password: $RUSTDESK_PASS"
 
-    # Шаг 4: Вывод информации для подключения
+    # Шаг 7: Вывод данных для подключения
     - name: Output connection info
       run: |
         echo "=============================="

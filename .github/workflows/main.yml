@@ -17,15 +17,21 @@ jobs:
       - name: Установить Homebrew (если не установлен)
         run: |
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV
-          eval "$(/opt/homebrew/bin/brew shellenv)"
+          # Определяем архитектуру и устанавливаем соответствующие пути
+          if [[ "$(uname -m)" == "x86_64" ]]; then
+            echo "/usr/local/bin" >> $GITHUB_PATH
+            echo "/usr/local/sbin" >> $GITHUB_PATH
+          elif [[ "$(uname -m)" == "arm64" ]]; then
+            echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            echo "/opt/homebrew/sbin" >> $GITHUB_PATH
+          fi
 
       - name: Скачивание ngrok для macOS
         run: |
           curl -L https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
           unzip ngrok.zip
           chmod +x ngrok
-          sudo mv ngrok /usr/local/bin/ngrok
+          sudo mv ngrok /usr/local/bin/ngrok || sudo mv ngrok /opt/homebrew/bin/ngrok
 
       - name: Аутентификация ngrok
         run: ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
@@ -57,10 +63,8 @@ jobs:
 
       - name: Получение публичных URL-адресов ngrok
         run: |
-          PUBLIC_URL1=$(curl -s http://localhost:4040/api/tunnels | \
-            python3 -c "import sys, json; data=json.load(sys.stdin); print([tunnel['public_url'] for tunnel in data['tunnels'] if tunnel['config']['addr'] == '21115'][0])")
-          PUBLIC_URL2=$(curl -s http://localhost:4040/api/tunnels | \
-            python3 -c "import sys, json; data=json.load(sys.stdin); print([tunnel['public_url'] for tunnel in data['tunnels'] if tunnel['config']['addr'] == '21116'][0])")
+          PUBLIC_URL1=$(jq -r '.tunnels[] | select(.config.addr == "21115") | .public_url' < http://localhost:4040/api/tunnels)
+          PUBLIC_URL2=$(jq -r '.tunnels[] | select(.config.addr == "21116") | .public_url' < http://localhost:4040/api/tunnels)
           echo "RustDesk Server Address: $PUBLIC_URL1"
           echo "RustDesk Relay Address: $PUBLIC_URL2"
           echo "RustDesk_Server_Address=$PUBLIC_URL1" >> $GITHUB_ENV

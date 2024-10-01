@@ -55,26 +55,44 @@ jobs:
         run: |
           # Создаем конфигурационный файл для RustDesk
           mkdir -p ~/rustdesk
-          echo "[hbbs]" > ~/rustdesk/hbbs.conf
-          echo "listen_addr = \"0.0.0.0:21115\"" >> ~/rustdesk/hbbs.conf
-          echo "relay_addr = \"0.0.0.0:21116\"" >> ~/rustdesk/hbbs.conf
-          echo "[hbbr]" > ~/rustdesk/hbbr.conf
-          echo "listen_addr = \"0.0.0.0:21116\"" >> ~/rustdesk/hbbr.conf
+          cat <<EOL > ~/rustdesk/hbbs.conf
+          [hbbs]
+          listen_addr = "0.0.0.0:21115"
+          relay_addr = "0.0.0.0:21116"
+          EOL
+
+          cat <<EOL > ~/rustdesk/hbbr.conf
+          [hbbr]
+          listen_addr = "0.0.0.0:21116"
+          EOL
 
       - name: Запуск RustDesk сервера
         run: |
           hbbs -c ~/rustdesk/hbbs.conf &
           hbbr -c ~/rustdesk/hbbr.conf &
-          sleep 5  # Ждем немного, чтобы серверы запустились
+          sleep 10  # Ждём немного больше для инициализации серверов
 
       - name: Создание ngrok туннелей для RustDesk
         run: |
           ngrok tcp 21115 --log=stdout > ngrok21115.log &
           ngrok tcp 21116 --log=stdout > ngrok21116.log &
-          sleep 10  # Ждем установления туннелей
+          sleep 20  # Ждём больше времени для установления туннелей
 
       - name: Установка jq
         run: brew install jq
+
+      - name: Проверка доступности ngrok API
+        run: |
+          for i in {1..10}; do
+            if curl -s http://localhost:4040/api/tunnels > /dev/null; then
+              echo "ngrok API доступно."
+              exit 0
+            fi
+            echo "Ждем доступности ngrok API..."
+            sleep 2
+          done
+          echo "Ошибка: ngrok API недоступно."
+          exit 1
 
       - name: Получение публичных URL-адресов ngrok
         run: |
@@ -87,10 +105,31 @@ jobs:
           PUBLIC_URL1=$(get_public_url 21115)
           PUBLIC_URL2=$(get_public_url 21116)
 
-          echo "RustDesk Server Address: $PUBLIC_URL1"
-          echo "RustDesk Relay Address: $PUBLIC_URL2"
+          # Отладочная информация
+          echo "DEBUG: PUBLIC_URL1=$PUBLIC_URL1"
+          echo "DEBUG: PUBLIC_URL2=$PUBLIC_URL2"
+
           echo "RustDesk_Server_Address=$PUBLIC_URL1" >> $GITHUB_ENV
           echo "RustDesk_Relay_Address=$PUBLIC_URL2" >> $GITHUB_ENV
+
+      - name: Проверка ngrok туннелей
+        run: |
+          if [[ -z "${{ env.RustDesk_Server_Address }}" || -z "${{ env.RustDesk_Relay_Address }}" ]]; then
+            echo "Ошибка: Не удалось получить публичные URL для туннелей ngrok."
+            echo "Лог туннеля 21115:"
+            cat ngrok21115.log
+            echo "Лог туннеля 21116:"
+            cat ngrok21116.log
+            exit 1
+          fi
+
+      - name: Сохранение логов ngrok как артефакты
+        uses: actions/upload-artifact@v3
+        with:
+          name: ngrok-logs
+          path: |
+            ngrok21115.log
+            ngrok21116.log
 
       - name: Вывод информации для подключения
         run: |
@@ -108,4 +147,4 @@ jobs:
           path: connection_info.txt
 
       - name: Ожидание для поддержания активности runner-а
-        run: sleep 6h
+        run: sleep 21600  # 6 часов в секундах

@@ -24,7 +24,7 @@ jobs:
       env:
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
       run: |
-        # Пароль должен содержать максимум 8 символов
+        # Проверка длины пароля
         if [ ${#VNC_PASSWORD} -gt 8 ]; then
           echo "Пароль VNC должен содержать максимум 8 символов."
           exit 1

@@ -1,4 +1,4 @@
-name: macOS Self-Hosted Runner Workflow
+name: macOS Workflow with NGROK
 
 on:
   push:
@@ -10,21 +10,48 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted  # Указывает на использование самохостящегося раннера
+    runs-on: [self-hosted, macos]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20.17.0'
+      - name: Установка Homebrew (если не установлен)
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV
+          eval "$(/opt/homebrew/bin/brew shellenv)"
 
-      - name: Install dependencies
-        run: npm install
+      - name: Установка NGROK
+        run: brew install --cask ngrok
 
-      - name: Run build
-        run: npm run build
+      - name: Настройка NGROK
+        run: ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Run tests
-        run: npm test
+      - name: Запуск локального сервиса
+        run: |
+          # Пример: запуск простого HTTP-сервера на порту 8000
+          python3 -m http.server 8000 &
+          SERVER_PID=$!
+
+          # Запуск NGROK для туннелирования порта 8000
+          ngrok http 8000 --log=stdout > ngrok.log &
+          NGROK_PID=$!
+
+          # Ожидание установления туннеля
+          sleep 10
+
+          # Получение публичного URL
+          PUBLIC_URL=$(grep -o "https://[0-9a-z]*\.ngrok.io" ngrok.log | head -n1)
+          echo "Public URL: $PUBLIC_URL"
+
+          # Сохранение URL как артефакт или вывод для использования далее
+          echo "::set-output name=ngrok_url::$PUBLIC_URL"
+
+      # Дополнительные шаги по необходимости
+
+      - name: Завершение процессов
+        if: always()
+        run: |
+          kill $SERVER_PID
+          kill $NGROK_PID

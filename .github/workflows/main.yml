@@ -20,10 +20,6 @@ jobs:
         run: |
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-      - name: Install ngrok
-        run: |
-          brew install --cask ngrok
-
       - name: Enable Remote Management (VNC)
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
@@ -32,19 +28,20 @@ jobs:
 
       - name: Set VNC password
         run: |
-          echo "YourVNCPassword" | perl -we 'chomp($p=<>); print pack("H*", "00000000000000000000000000000000"), $p' > ~/.vncpw
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -configure -clientopts -setvnclegacy -vnclegacy yes \
-          -setvncpw -vncpwfile ~/.vncpw
+          echo "YourVNCPassword" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw
 
       - name: Start ngrok on port 5900 for VNC
         run: |
           ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           nohup ngrok tcp 5900 &
 
-      - name: Get ngrok public URL
+      - name: Wait for ngrok to start
         run: |
           sleep 10
+
+      - name: Get ngrok public URL
+        run: |
           curl --silent http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
 
       - name: Keep the workflow running (sleep)

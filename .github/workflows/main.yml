@@ -38,7 +38,7 @@ jobs:
         mkdir -p ~/.ngrok2
         cat <<EOF > ~/.ngrok2/ngrok.yml
         version: "2"
-        authtoken: "YOUR_NGROK_AUTH_TOKEN"
+        authtoken: "NGROK_AUTH_TOKEN"
         tunnels:
           vnc:
             proto: tcp

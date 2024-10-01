@@ -67,7 +67,7 @@ jobs:
         run: |
           # Запуск ngrok в фоновом режиме
           nohup ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log 2>&1 &
-          sleep 15
+          sleep 30  # Увеличенное время ожидания для установления туннеля
 
           # Проверка, запущен ли ngrok
           if pgrep ngrok > /dev/null; then
@@ -78,8 +78,9 @@ jobs:
             exit 1
           fi
 
-          # Извлечение публичного адреса
-          PUBLIC_URL=$(grep -o "tcp://[0-9\.]*\.tcp.ngrok.io:[0-9]*" ngrok.log | head -n1)
+          # Извлечение публичного адреса с использованием ngrok API
+          PUBLIC_URL=$(curl --silent http://localhost:4040/api/tunnels | grep -o '"public_url":"tcp://[^"]*' | grep -o 'tcp://[^"]*')
+
           if [ -z "$PUBLIC_URL" ]; then
             echo "Не удалось получить публичный адрес ngrok."
             cat ngrok.log  # Вывод логов для диагностики

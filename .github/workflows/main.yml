@@ -9,95 +9,95 @@ jobs:
     timeout-minutes: 360  # Максимальное время выполнения: 6 часов
 
     steps:
-    - name: Проверить текущего пользователя
-      run: whoami
+      - name: Проверить текущего пользователя
+        run: whoami
 
-    - name: Включить совместное использование экрана с VNC Legacy Mode
-      env:
-        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
-      run: |
-        # Проверка длины пароля
-        if [ ${#VNC_PASSWORD} -gt 8 ]; then
-          echo "Пароль VNC должен содержать максимум 8 символов."
-          exit 1
-        fi
+      - name: Включить совместное использование экрана с VNC Legacy Mode
+        env:
+          VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+        run: |
+          # Проверка длины пароля
+          if [ ${#VNC_PASSWORD} -ne 8 ]; then
+            echo "Пароль VNC должен содержать ровно 8 символов."
+            exit 1
+          fi
 
-        # Конвертация пароля в шестнадцатеричный формат
-        HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
+          # Конвертация пароля в шестнадцатеричный формат
+          HEX_PW=$(echo -n "$VNC_PASSWORD" | xxd -p | tr -d '\n')
 
-        # Настройка VNC-сервера в Legacy Mode
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate \
-          -configure \
-          -access -on \
-          -users "runner" \
-          -privs -all \
-          -clientopts -setvnclegacy yes \
-          -clientopts -setvncpw "$HEX_PW" \
-          -restart -agent -console
+          # Настройка VNC-сервера в Legacy Mode
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate \
+            -configure \
+            -access -on \
+            -users "runner" \
+            -privs -all \
+            -clientopts -setvnclegacy yes \
+            -clientopts -setvncpw "$HEX_PW" \
+            -restart -agent -console
 
-    - name: Проверить статус VNC-сервера
-      run: |
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -status
-      shell: /bin/bash -e
+      - name: Проверить статус VNC-сервера
+        run: |
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -status
+        shell: /bin/bash
 
-    - name: Установить ngrok
-      run: |
-        brew install --cask ngrok
+      - name: Установить ngrok
+        run: |
+          brew install --cask ngrok
 
-    - name: Настроить ngrok
-      run: |
-        mkdir -p ~/.ngrok2
-        cat <<EOF > ~/.ngrok2/ngrok.yml
-        version: "2"
-        authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
-        tunnels:
-          vnc:
-            proto: tcp
-            addr: 5900
-        EOF
+      - name: Настроить ngrok
+        run: |
+          mkdir -p ~/.ngrok2
+          cat <<EOF > ~/.ngrok2/ngrok.yml
+          version: "2"
+          authtoken: "${{ secrets.NGROK_AUTH_TOKEN }}"
+          tunnels:
+            vnc:
+              proto: tcp
+              addr: 5900
+          EOF
 
-    - name: Проверить конфигурационный файл ngrok
-      run: |
-        cat ~/.ngrok2/ngrok.yml
-      shell: /bin/bash -e
+      - name: Проверить конфигурационный файл ngrok
+        run: |
+          cat ~/.ngrok2/ngrok.yml
+        shell: /bin/bash
 
-    - name: Запустить туннель ngrok для VNC
-      id: ngrok
-      run: |
-        # Запуск ngrok в фоновом режиме
-        nohup ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log 2>&1 &
-        sleep 15
+      - name: Запустить туннель ngrok для VNC
+        id: ngrok
+        run: |
+          # Запуск ngrok в фоновом режиме
+          nohup ngrok start vnc --config ~/.ngrok2/ngrok.yml > ngrok.log 2>&1 &
+          sleep 15
 
-        # Проверка, запущен ли ngrok
-        if pgrep ngrok > /dev/null; then
-          echo "ngrok успешно запущен"
-        else
-          echo "ngrok не запущен. Проверка логов..."
-          cat ngrok.log
-          exit 1
-        fi
+          # Проверка, запущен ли ngrok
+          if pgrep ngrok > /dev/null; then
+            echo "ngrok успешно запущен"
+          else
+            echo "ngrok не запущен. Проверка логов..."
+            cat ngrok.log
+            exit 1
+          fi
 
-        # Извлечение публичного адреса
-        PUBLIC_URL=$(grep -o "tcp://[0-9\.]*\.tcp.ngrok.io:[0-9]*" ngrok.log | head -n1)
-        if [ -z "$PUBLIC_URL" ]; then
-          echo "Не удалось получить публичный адрес ngrok."
-          cat ngrok.log  # Вывод логов для диагностики
-          exit 1
-        fi
+          # Извлечение публичного адреса
+          PUBLIC_URL=$(grep -o "tcp://[0-9\.]*\.tcp.ngrok.io:[0-9]*" ngrok.log | head -n1)
+          if [ -z "$PUBLIC_URL" ]; then
+            echo "Не удалось получить публичный адрес ngrok."
+            cat ngrok.log  # Вывод логов для диагностики
+            exit 1
+          fi
 
-        HOST=$(echo $PUBLIC_URL | cut -d':' -f2 | tr -d '/')
-        PORT=$(echo $PUBLIC_URL | cut -d':' -f3)
-        echo "host=$HOST" >> $GITHUB_OUTPUT
-        echo "port=$PORT" >> $GITHUB_OUTPUT
+          HOST=$(echo $PUBLIC_URL | cut -d':' -f2 | tr -d '/')
+          PORT=$(echo $PUBLIC_URL | cut -d':' -f3)
+          echo "host=$HOST" >> $GITHUB_OUTPUT
+          echo "port=$PORT" >> $GITHUB_OUTPUT
 
-    - name: Показать адрес для подключения
-      run: |
-        echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
-        echo "Логин: runner"
-        echo "Пароль: Passwrd1"
+      - name: Показать адрес для подключения
+        run: |
+          echo "VNC доступен по адресу: ${{ steps.ngrok.outputs.host }}:${{ steps.ngrok.outputs.port }}"
+          echo "Логин: runner"
+          echo "Пароль: Passwrd1"
 
-    - name: Поддерживать работу Runner до 6 часов
-      run: |
-        echo "Сеанс VNC активен. Он будет закрыт через 6 часов."
-        sleep 21600  # 6 часов в секундах
+      - name: Поддерживать работу Runner до 6 часов
+        run: |
+          echo "Сеанс VNC активен. Он будет закрыт через 6 часов."
+          sleep 21600  # 6 часов в секундах

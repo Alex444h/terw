@@ -1,4 +1,4 @@
-name: Setup macOS with VNC Access via Ngrok
+name: CI
 
 on:
   push:
@@ -9,57 +9,22 @@ on:
       - main
 
 jobs:
-  setup-macos:
-    name: Setup macOS with VNC
-    runs-on: macos-latest
+  build:
+    runs-on: self-hosted  # Используем self-hosted runner
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Install Homebrew and Ngrok
-        run: |
-          echo | /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-          eval "$(/opt/homebrew/bin/brew shellenv)"
-          brew install ngrok
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
 
-      - name: Create new user for VNC (optional)
-        run: |
-          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "YourStrongPassword"
-          sudo dscl . -append /Groups/admin GroupMembership vncuser
+      - name: Install dependencies
+        run: npm install
 
-      - name: Enable Remote Management (VNC) and configure access
-        run: |
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate -configure -access -on -users vncuser -privs -all \
-          -restart -agent -menu
+      - name: Run build
+        run: npm run build
 
-      - name: Set VNC password (use your desired password)
-        run: |
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "YourStrongPassword"
-
-      - name: Ensure graphical session is active
-        run: |
-          sudo launchctl load /System/Library/LaunchDaemons/com.apple.WindowServer.plist
-          sudo launchctl load /System/Library/LaunchDaemons/com.apple.loginwindow.plist
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate -restart -agent -menu
-
-      - name: Start ngrok on port 5900 for VNC
-        run: |
-          ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          nohup ngrok tcp 5900 &
-
-      - name: Wait for ngrok to start
-        run: |
-          sleep 20
-
-      - name: Get ngrok public URL
-        run: |
-          curl --silent http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
-
-      - name: Keep the workflow running (sleep)
-        run: |
-          echo "VNC is now accessible. Keeping the workflow alive..."
-          sleep 9999999
+      # Добавьте дополнительные шаги по необходимости
